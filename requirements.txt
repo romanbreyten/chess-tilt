@@ -1,0 +1,25 @@
+# Pinned versions tested on Python 3.14.7 (Windows, 64-bit).
+# Install with:  pip install -r requirements.txt
+
+# Data ingestion
+zstandard==0.25.0        # stream-decompress .pgn.zst
+chess==1.11.2            # python-chess PGN parser
+
+# Data processing / storage
+pandas==3.0.6
+numpy==2.5.4
+pyarrow==26.0.0          # Parquet files
+duckdb==1.5.6            # SQL over Parquet
+
+# Statistics
+statsmodels==0.15.0
+linearmodels==7.0        # panel regression with fixed effects
+
+# Charts and dashboard
+matplotlib==3.11.2
+seaborn==0.13.2
+streamlit==1.66.0
+
+# Dev / notebooks
+pytest==9.1.1
+ipykernel==7.4.0         # lets VS Code / Jupyter run notebooks/ with this venv
