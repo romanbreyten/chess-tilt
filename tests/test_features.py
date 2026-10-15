@@ -130,6 +130,9 @@ def test_gap_session_and_bucket():
     assert list(a.new_session) == [True, False, True]
     assert list(a.session_id) == [1, 1, 2]
     assert list(a.game_in_session) == [1, 2, 1]
+    assert a.next_gap_minutes.iloc[0] == pytest.approx(0.5)  # the gap AFTER g1 = the gap before g2
+    assert a.next_gap_minutes.iloc[1] == pytest.approx(45)
+    assert pd.isna(a.next_gap_minutes.iloc[2])               # no game after g3
 
 
 def test_loss_streak_counts_within_session_and_resets():

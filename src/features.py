@@ -102,7 +102,8 @@ ordered AS (
         lag(last_move_time)  OVER w AS prev_last_move_time,
         lag(speed)           OVER w AS prev_speed,
         lag(opponent)        OVER w AS prev_opponent,
-        lag(is_clean)        OVER w AS prev_is_clean
+        lag(is_clean)        OVER w AS prev_is_clean,
+        lead(start_time)     OVER w AS next_start_time  -- to measure who keeps playing (selection)
     FROM with_end
     WINDOW w AS (PARTITION BY player ORDER BY start_time, game_id)
 ),
@@ -185,6 +186,8 @@ SELECT
          WHEN t.gap_minutes < {SESSION_BREAK_MINUTES} THEN '5-30 min'
          ELSE '30+ min' END AS gap_bucket,
     t.new_session, t.session_id, t.game_in_session, t.loss_streak_before,
+    -- minutes from this game's last move to the player's next game (NULL = no more games this month)
+    date_diff('second', t.last_move_time, t.next_start_time) / 60.0 AS next_gap_minutes,
 
     -- the opponent's state going into the same game (their tilt affects our residual too)
     o.prev_score AS opp_prev_score,
