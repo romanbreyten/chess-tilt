@@ -1,0 +1,6 @@
+# Dashboard-only dependencies (Streamlit Community Cloud installs this file for app/streamlit_app.py).
+# The full pipeline uses the requirements.txt in the repo root.
+streamlit==1.66.0
+altair==6.3.0
+pandas==3.0.6
+numpy==2.5.4

@@ -17,10 +17,11 @@ linearmodels==7.0        # panel regression with fixed effects
 
 # Charts and dashboard
 matplotlib==3.11.2
-seaborn==0.13.2
 streamlit==1.66.0
 altair==6.3.0            # interactive charts in the dashboard
 
 # Dev / notebooks
 pytest==9.1.1
 ipykernel==7.4.0         # lets VS Code / Jupyter run notebooks/ with this venv
+nbformat==5.11.1         # build / re-run notebooks/exploration.ipynb
+nbclient==0.11.0

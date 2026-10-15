@@ -1,6 +1,26 @@
 # Decisions log
 
-Every methodological choice, in plain English, with the reason. Newest at the bottom.
+Every methodological choice in this project, in plain English, with the reason and the evidence. The numbers in brackets refer to the sections below.
+
+## Summary
+
+| # | Decision | Why, in one line |
+|---|---|---|
+| 1 | Use April 2017 data | First month with clock times, needed to time the gap between games |
+| 2 | Regex parser instead of python-chess | Same results on 1.3M checked values, 34x faster |
+| 3 | Parse every game, filter later | A player's "previous game" must be their real previous game |
+| 4 | Classify speed from the time control | Lichess had no "Rapid" category in 2017 |
+| 5 | A game ends at its last move; use each player's real starting clock | Fixes impossible overlaps (5.1% -> 0.07%) from berserk and walk-aways |
+| 6 | Sessions break after 30 min; streaks count within a session | Tilt is short-lived; last night's losses shouldn't count today |
+| 7 | Rated blitz/rapid, finished normally, both players moved | Only games that were actually played |
+| 8 | Record the opponent's state | My result is the mirror of my opponent's |
+| 9 | Standard Elo formula for expected score | Close to Glicko-2; fixed effects absorb constant bias |
+| 10 | Lobby games for the headline, tournaments separately | Tournament pairing is automatic, so a fast restart isn't a choice |
+| 11 | Cool-down comparison by time before the next game | Separates short-lived effects from rating mechanics |
+| 12 | Controls in every model | Colour, session position (fatigue), opponent's state |
+| 13 | Measure who keeps playing after a loss | We only see performance for those who continue |
+| 14 | Control for rating vs. the player's own average | Without it, rating mechanics flip the sign |
+| 15 | Placebo test with the game two back | Shows the effect builds up over a session |
 
 ---
 
@@ -10,7 +30,7 @@ Every methodological choice, in plain English, with the reason. Newest at the bo
 
 **Why:** The research question needs the gap between the end of one game and the start of the next (did the player requeue within 1 minute?). PGN headers only record when a game *started*. Clock times (`[%clk]`) in the move text let us calculate how long a game actually lasted, so we can compute the end time instead of guessing it. Lichess started recording clock times in April 2017. You can see this in the file sizes: March and April 2017 have nearly the same number of games, but April's file is 60% bigger because every move now carries a timestamp. Without clocks we would have to estimate game length from the move count, which is too rough for a "<1 minute" bucket.
 
-**Trade-off:** About 3× larger than a 2016 month, but still well under the 5 GB limit, and we stream it instead of loading it into memory.
+**Trade-off:** About 3× larger than a 2016 month, but still small enough for a laptop, and the file is streamed rather than loaded into memory.
 
 ---
 
@@ -66,7 +86,7 @@ Every methodological choice, in plain English, with the reason. Newest at the bo
 
 **Decision:**
 - A player's timeline = all their rated games sorted by start time, **except correspondence** (multi-day games overlap everything else).
-- **New session** = 30+ minutes since the previous game's last move (from the project spec).
+- **New session** = 30+ minutes since the previous game's last move.
 - **Losing streak** = losses in a row going into this game, **counted within the current session**. A win, a draw, or an unfinished game ends the streak, and so does a 30-minute break.
 
 **Why:** Tilt is a short-lived emotional state. Three losses last night shouldn't count as a 3-game streak this morning. Bullet games in the middle of a session *do* count toward the streak and as the "previous game" (see #3), because they're part of what the player just experienced.
@@ -96,13 +116,13 @@ Every methodological choice, in plain English, with the reason. Newest at the bo
 
 **Decision:** Each row also records the opponent's previous result and losing streak going into the same game.
 
-**Why:** In every game my residual is exactly minus my opponent's. If my opponent is tilted, my residual goes up, which has nothing to do with my own state. The model in Phase 3 can control for this.
+**Why:** In every game my residual is exactly minus my opponent's. If my opponent is tilted, my residual goes up, which has nothing to do with my own state. Every model controls for this (decision #12).
 
 ---
 
 ## 9. Expected score uses the Elo formula, although Lichess uses Glicko-2
 
-**Decision:** Expected score = `1 / (1 + 10^((opp − player) / 400))`, as specified.
+**Decision:** Expected score = `1 / (1 + 10^((opp − player) / 400))`, the standard Elo formula.
 
 **Why it's OK:** Glicko-2 also tracks how *uncertain* each rating is, which isn't in the PGN. For established players the Elo formula gives almost the same expected score. Any constant over- or under-prediction for a player is absorbed by player fixed effects, because we compare each player with themselves. **Limitation:** for brand-new players with uncertain ratings, the expected score is noisier.
 
@@ -121,7 +141,7 @@ Every methodological choice, in plain English, with the reason. Newest at the bo
 **Decision:** Besides comparing "after a loss" with "after a win", we estimate the loss effect separately by how long the player waited before the next game (<1, 1–5, 5–30, 30+ minutes). The key number is the loss effect at **<1 min minus** the loss effect at **30+ min**.
 
 **Why:** Two things other than tilt can make "after a loss" look different:
-1. **Rating mechanics.** A loss lowers your rating by about 5–10 points. If the loss was partly bad luck, you're now slightly *underrated*, so you'll tend to beat the new prediction. This pushes toward "players do *better* after a loss".
+1. **Rating mechanics.** A loss lowers your rating, typically by 10 points (middle half of losses: 8 to 12, in the analysis sample). If the loss was partly bad luck, you're now slightly *underrated*, so you'll tend to beat the new prediction. This pushes toward "players do *better* after a loss".
 2. **Bad form.** If you're having an off day, you lose *and* you keep playing badly. This pushes toward "worse after a loss" without any emotional reaction.
 
 Rating mechanics don't depend on how many minutes you waited before the next game, so they cancel out when we subtract the 30+ minute loss effect from the <1 minute one. So does any *long-lasting* change in form. An emotional reaction should fade with time, so if the loss effect is worse for an immediate requeue than after a break, the effect is short-lived.
@@ -139,7 +159,7 @@ Rating mechanics don't depend on how many minutes you waited before the next gam
 - **Position in session:** a 5-loss streak needs at least 6 games, so without this control a streak effect could just be fatigue.
 - **Opponent's state:** my residual is exactly minus my opponent's, so their tilt shows up in my number (decision #8).
 
-**Standard errors** are clustered by player, as specified. As a robustness check we also cluster by opponent (two-way), because both players' rows of a game share the same result.
+**Standard errors** are clustered by player. As a robustness check we also cluster by opponent (two-way), because both players' rows of a game share the same result.
 
 ---
 
@@ -153,9 +173,9 @@ Rating mechanics don't depend on how many minutes you waited before the next gam
 
 ## 14. Control for the player's rating relative to their own average
 
-**Decision:** Every main model also controls for the player's current rating minus **their own average rating this month** (same speed, in units of 100 Elo). The model without it, which is the specification as first written in the project plan, is saved alongside it (`rating_control = "none"` in `results/models.csv`).
+**Decision:** Every main model also controls for the player's current rating minus **their own average rating this month** (same speed, in units of 100 Elo). The model without it (the original specification) is saved alongside it (`rating_control = "none"` in `results/models.csv`).
 
-**Why:** Without this control the model said players do **better** after a loss (+0.63 points, about +4 Elo) and better still after longer losing streaks. That's an artifact of how ratings work. Each loss knocks roughly 8 points off your rating, but your actual skill hasn't changed that fast, so in the next game you're slightly *underrated* and beat the prediction. The control asks the question we actually care about: **compared with how this player usually plays, how do they play after a loss?** With it, the sign flips: −0.99 points (about −7 Elo) after a loss, −3.5 points (about −24 Elo) after 5+ losses in a row.
+**Why:** Without this control the model said players do **better** after a loss (+0.63 points, about +4 Elo) and better still after longer losing streaks. That's an artifact of how ratings work. Each loss typically knocks about 10 points off your rating, but your actual skill hasn't changed that fast, so in the next game you're slightly *underrated* and beat the prediction. The control asks the question we actually care about: **compared with how this player usually plays, how do they play after a loss?** With it, the sign flips: −0.99 points (about −7 Elo) after a loss, −3.5 points (about −24 Elo) after 5+ losses in a row.
 
 **Evidence the control does what we think:** its coefficient is −0.13 per 100 Elo above your own average. A 100-point rating gap changes the expected score by about 0.14, so ~90% of short-term rating swings within a month are noise, not real changes in skill.
 
