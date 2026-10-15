@@ -10,3 +10,4 @@ PROCESSED_DIR = ROOT / "data" / "processed"
 
 RAW_FILE = RAW_DIR / f"lichess_db_standard_rated_{MONTH}.pgn.zst"
 GAMES_FILE = PROCESSED_DIR / "games.parquet"
+PLAYER_GAMES_FILE = PROCESSED_DIR / "player_games.parquet"

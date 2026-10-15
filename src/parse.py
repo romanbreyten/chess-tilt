@@ -45,6 +45,8 @@ SCHEMA = pa.schema([
     ("increment_seconds", pa.int32()),
     ("termination", pa.string()),
     ("n_clock_plies", pa.int32()),      # half-moves that carry a clock time
+    ("white_first_clock", pa.int32()),  # seconds on White's clock after their first move = real
+    ("black_first_clock", pa.int32()),  #   starting time (half the time control if they "berserked")
     ("white_final_clock", pa.int32()),  # seconds left after White's last move
     ("black_final_clock", pa.int32()),
 ])
@@ -119,6 +121,8 @@ def game_to_row(headers, movetext):
         "increment_seconds": inc,
         "termination": headers.get("Termination"),
         "n_clock_plies": len(clocks),
+        "white_first_clock": white_clocks[0] if white_clocks else None,
+        "black_first_clock": black_clocks[0] if black_clocks else None,
         "white_final_clock": white_clocks[-1] if white_clocks else None,
         "black_final_clock": black_clocks[-1] if black_clocks else None,
     }

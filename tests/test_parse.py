@@ -97,6 +97,7 @@ def test_clocks_alternate_white_black():
     # Game 1: 5 half-moves, White moved last. White's clocks: 180, 175, 170. Black's: 180, 161.
     row = game_to_row(*parsed_games()[0])
     assert row["n_clock_plies"] == 5
+    assert (row["white_first_clock"], row["black_first_clock"]) == (180, 180)
     assert row["white_final_clock"] == 170
     assert row["black_final_clock"] == 161
 
@@ -117,6 +118,7 @@ def test_missing_values_become_none():
     assert row["black_title"] == "BOT"
     assert (row["base_seconds"], row["increment_seconds"]) == (None, None)  # "-" time control
     assert row["n_clock_plies"] == 0
+    assert row["white_first_clock"] is None and row["black_first_clock"] is None
     assert row["white_final_clock"] is None and row["black_final_clock"] is None
     assert row["termination"] == "Abandoned"
 

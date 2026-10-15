@@ -48,6 +48,8 @@ def run_chess_full(path, n):
                 "white_elo": h.get("WhiteElo"), "black_elo": h.get("BlackElo"),
                 "time_control": h.get("TimeControl"), "termination": h.get("Termination"),
                 "n_clock_plies": len(clocks),
+                "white_first_clock": clocks[0] if clocks else None,
+                "black_first_clock": clocks[1] if len(clocks) > 1 else None,
                 "white_final_clock": clocks[0::2][-1] if clocks[0::2] else None,
                 "black_final_clock": clocks[1::2][-1] if clocks[1::2] else None,
             })
