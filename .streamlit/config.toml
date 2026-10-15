@@ -1,0 +1,29 @@
+# Dashboard theme (app/streamlit_app.py). Colours match the charts in figures/:
+# blue = the data accent, orange = the second series, hairline borders.
+
+[client]
+toolbarMode = "viewer"  # hide developer options (Deploy, Rerun) from visitors
+
+[theme]
+font = "Schibsted Grotesk:https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&display=swap"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+baseRadius = "0.5rem"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#2a78d6"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f2f1ee"
+textColor = "#16181d"
+borderColor = "#e1e0d9"
+linkColor = "#1c5cab"
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a"]
+
+[theme.dark]
+primaryColor = "#3987e5"
+backgroundColor = "#1a1a19"
+secondaryBackgroundColor = "#242422"
+textColor = "#f3f2ee"
+borderColor = "#34342f"
+linkColor = "#86b6ef"
+chartCategoricalColors = ["#3987e5", "#d95926", "#199e70"]

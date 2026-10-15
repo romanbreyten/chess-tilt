@@ -18,8 +18,9 @@ Steps (all in DuckDB SQL, so 22M rows never have to fit in pandas):
 Every non-obvious choice here is explained in docs/decisions.md.
 """
 import duckdb
+import pandas as pd
 
-from config import GAMES_FILE, PLAYER_GAMES_FILE
+from config import GAMES_FILE, PLAYER_GAMES_FILE, RESULTS_DIR
 
 SESSION_BREAK_MINUTES = 30
 
@@ -208,17 +209,29 @@ def build_sample(con):
     return con.sql(SAMPLE_SQL)
 
 
-def print_funnel(con):
-    """Show how many player-game rows survive each sample rule."""
-    total = con.sql("SELECT 2 * count(*) FROM games").fetchone()[0]
-    print("\n=== Sample funnel (player-game rows) ===")
-    print(f"  {'all player-games':<28}{total:>14,}")
-    print(f"  {'not correspondence':<28}{con.sql('SELECT count(*) FROM timeline').fetchone()[0]:>14,}")
+def sample_funnel(con):
+    """How many games, players and player-game rows there are, and how many survive each sample rule.
+
+    Printed, and saved to results/sample_funnel.csv so the README and dashboard can cite these counts.
+    """
+    count = lambda sql: con.sql(sql).fetchone()[0]
+    rows = [
+        ("games in the dump", count("SELECT count(*) FROM games")),
+        ("players in the dump", count("SELECT count(DISTINCT p) FROM (SELECT white AS p FROM games "
+                                      "UNION ALL SELECT black FROM games)")),
+        ("all player-games", count("SELECT 2 * count(*) FROM games")),
+        ("not correspondence", count("SELECT count(*) FROM timeline")),
+    ]
     conditions = []
     for label, cond in SAMPLE_RULES:
         conditions.append(f"({cond})")
-        n = con.sql(f"SELECT count(*) FROM timeline WHERE {' AND '.join(conditions)}").fetchone()[0]
-        print(f"  {label:<28}{n:>14,}")
+        rows.append((label, count(f"SELECT count(*) FROM timeline WHERE {' AND '.join(conditions)}")))
+    funnel = pd.DataFrame(rows, columns=["step", "count"])
+
+    print("\n=== Sample funnel ===")
+    for step, n in rows:
+        print(f"  {step:<28}{n:>14,}")
+    return funnel
 
 
 def print_checks(con):
@@ -261,7 +274,8 @@ def main():
 
     print("Building player timelines...")
     build_timeline(con)
-    print_funnel(con)
+    RESULTS_DIR.mkdir(exist_ok=True)
+    sample_funnel(con).to_csv(RESULTS_DIR / "sample_funnel.csv", index=False)
 
     build_sample(con).write_parquet(PLAYER_GAMES_FILE.as_posix())
     con.execute(f"CREATE VIEW s AS SELECT * FROM read_parquet('{PLAYER_GAMES_FILE.as_posix()}')")
