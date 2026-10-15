@@ -13,7 +13,6 @@ __pycache__/
 # Streamlit local secrets
 .streamlit/secrets.toml
 
-
 # OS / editor
 .DS_Store
 Thumbs.db

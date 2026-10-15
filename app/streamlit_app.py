@@ -17,7 +17,7 @@ RESULTS = ROOT / "results"
 DECISIONS = ROOT / "docs" / "decisions.md"
 
 AUTHOR = "Roman Breytenbikher"
-REPO_URL = ""      # add your GitHub repo link to show it in the footer
+REPO_URL = "https://github.com/romanbreyten/chess-tilt"
 LINKEDIN_URL = ""  # add your LinkedIn profile link to show it in the footer
 
 ELO_PER_SCORE_POINT = 400 / (np.log(10) * 0.25)  # same constant as src/analysis.py
@@ -66,26 +66,24 @@ def effects(speed, band):
     return g[(g.speed == speed) & (g.rating_band == band)].set_index("term")
 
 
-# ---------------------------------------------------------------- colours (follow the light/dark theme)
+# ---------------------------------------------------------------- colours
+# Text, axes and gridlines come from Streamlit's chart theme, which follows the visitor's light or
+# dark mode in the browser. Data colours are mid-tones that read on both backgrounds.
 
 def palette():
-    if st.context.theme.type == "dark":
-        return dict(ink="#f3f2ee", ink2="#c3c2b7", muted="#898781", grid="#2c2c2a", baseline="#4a4a45",
-                    blue="#3987e5", orange="#d95926", gray="#7a7973", surface="#1a1a19")
-    return dict(ink="#16181d", ink2="#52514e", muted="#898781", grid="#e9e8e2", baseline="#c3c2b7",
-                blue="#2a78d6", orange="#eb6834", gray="#c9c7bf", surface="#fcfcfb")
+    return dict(blue="#2f7fdc", orange="#e8622c", gray="#a3a199", whisker="#8a8984", baseline="#9c9a93",
+                red="#e34948", mid="#ecebe6", heat_ink="#16181d")  # red/mid/blue: the tilt map's diverging scale
 
 
 def finish(chart, height=300):
-    """Shared chart chrome: transparent background, theme font, hairline grid, quiet axes."""
-    p = palette()
-    return (chart.properties(height=height, background="transparent")
+    """Shared chart layout: theme font, quiet axes. Colours of text and gridlines are left to the theme."""
+    return (chart.properties(height=height)
             .configure(font=FONT)
             .configure_view(stroke=None)
-            .configure_axis(labelColor=p["ink2"], titleColor=p["ink2"], gridColor=p["grid"], domain=False,
-                            ticks=False, labelFontSize=13, titleFontSize=12, titleFontWeight=500, labelPadding=8)
-            .configure_legend(labelColor=p["ink"], titleColor=p["ink2"], labelFontSize=13, orient="top",
-                              title=None, symbolStrokeWidth=3, symbolOpacity=1, labelLimit=320))
+            .configure_axis(domain=False, ticks=False, labelFontSize=13, titleFontSize=12, titleFontWeight=500,
+                            labelPadding=8)
+            .configure_legend(labelFontSize=13, orient="top", title=None, symbolStrokeWidth=3, symbolOpacity=1,
+                              labelLimit=320))
 
 
 TOOLTIP = [alt.Tooltip("group:N", title="Group"), alt.Tooltip("value_label:N", title="Effect (Elo)"),
@@ -119,22 +117,61 @@ def effect_bars(df, order, bar_size=26):
         size=bar_size, cornerRadiusBottomLeft=4, cornerRadiusBottomRight=4).encode(y=y, color=color, tooltip=TOOLTIP)
     up = base.transform_filter("datum.elo >= 0").mark_bar(
         size=bar_size, cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(y=y, color=color, tooltip=TOOLTIP)
-    ci = base.mark_rule(strokeWidth=1.5, color=p["ink2"]).encode(y="elo_low:Q", y2="elo_high:Q", tooltip=TOOLTIP)
-    text = dict(fontSize=14, fontWeight=600, color=p["ink"], lineBreak="\n", font=FONT)
+    ci = base.mark_rule(strokeWidth=1.5, color=p["whisker"]).encode(y="elo_low:Q", y2="elo_high:Q", tooltip=TOOLTIP)
+    text = dict(fontSize=14, fontWeight=600, lineBreak="\n", font=FONT)  # coloured by the page CSS (vlabel rule)
     below = base.transform_filter("datum.elo < 0").mark_text(baseline="top", dy=6, **text).encode(
-        y="label_y:Q", text="bar_label:N")
+        y="label_y:Q", text="bar_label:N").properties(name="vlabel_below")
     above = base.transform_filter("datum.elo >= 0").mark_text(baseline="bottom", dy=-6, **text).encode(
-        y="label_y:Q", text="bar_label:N")
+        y="label_y:Q", text="bar_label:N").properties(name="vlabel_above")
     zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=p["baseline"], strokeWidth=1.2).encode(y="y:Q")
     return alt.layer(down, up, zero, ci, below, above)
 
 
-def streak_chart(e):
+STREAK_TERMS = ["streak_1", "streak_2", "streak_3", "streak_4", "streak_5plus"]
+STREAK_LABELS = ["1", "2", "3", "4", "5+"]
+
+
+def staircase_chart(e, selected_term):
+    """Effect by losses in a row, plus 'after a break'. The visitor's streak is highlighted, the rest are context."""
     p = palette()
-    terms = ["streak_1", "streak_2", "streak_3", "streak_4", "streak_5plus", "loss_x_gap_30plus"]
-    labels = ["1", "2", "3", "4", "5+", "Then a|30+ min|break"]
-    df = e.loc[terms].assign(x=labels, color=[p["blue"]] * 5 + [p["gray"]])
-    return effect_bars(df, labels)
+    terms = STREAK_TERMS + ["loss_x_gap_30plus"]
+    labels = STREAK_LABELS + ["After a|break"]
+    df = e.loc[terms].assign(x=labels, color=[p["blue"] if t == selected_term else p["gray"] for t in terms])
+    return effect_bars(df, labels, bar_size=22)
+
+
+def tilt_map(speed, band):
+    """Grid of rating band x losses in a row (+ after a break), coloured by the effect; the visitor's band is outlined."""
+    p = palette()
+    g = with_elo(load("effects_by_group.csv"))
+    terms = STREAK_TERMS + ["loss_x_gap_30plus"]
+    cols = dict(zip(terms, STREAK_LABELS + ["After a|break"]))
+    rows = {v: k for k, v in BANDS.items() if k != "All"}
+    df = g[(g.speed == speed) & g.rating_band.isin(rows) & g.term.isin(terms)].copy()
+    df["col"], df["row"] = df.term.map(cols), df.rating_band.map(rows)
+    df["group"] = df.row + ", " + df.col.str.replace("|", " ", regex=False) + (
+        np.where(df.term == "loss_x_gap_30plus", "", " in a row"))
+    df["cell_label"] = df.value_label.str.replace(" (n.s.)", "\nn.s.", regex=False)
+    df["selected"] = df.rating_band == band
+    limit = max(10, df.elo.abs().max())
+    # strong cells get light text, pale cells dark text, so every label stays readable
+    base = alt.Chart(df).encode(
+        x=alt.X("col:N", sort=list(cols.values()), title="Losses in a row before the game",
+                scale=alt.Scale(paddingInner=0.07),  # the gaps between squares show the page background
+                axis=alt.Axis(orient="top", labelAngle=0, labelExpr="split(datum.label, '|')", titlePadding=10)),
+        y=alt.Y("row:N", sort=list(rows.values()), title=None, scale=alt.Scale(paddingInner=0.07),
+                axis=alt.Axis(labelFontWeight=500)))
+    cells = base.mark_rect(cornerRadius=6).encode(
+        color=alt.Color("elo:Q", title="Elo points", scale=alt.Scale(
+            domain=[-limit, 0, limit], range=[p["red"], p["mid"], p["blue"]], interpolate="lab"),
+            legend=alt.Legend(orient="bottom", direction="horizontal", gradientLength=220, format="+d")),
+        stroke=alt.condition("datum.selected", alt.value(p["heat_ink"]), alt.value("transparent")),
+        strokeWidth=alt.condition("datum.selected", alt.value(3), alt.value(0)),
+        tooltip=TOOLTIP)
+    text = base.mark_text(fontSize=15, fontWeight=600, lineBreak="\n", font=FONT).encode(
+        text="cell_label:N",
+        color=alt.condition(f"abs(datum.elo) > {0.45 * limit}", alt.value("#ffffff"), alt.value(p["heat_ink"])))
+    return alt.layer(cells, text)
 
 
 def cooldown_chart(e):
@@ -143,17 +180,6 @@ def cooldown_chart(e):
     labels = ["Under|1 min", "1–5|min", "5–30|min", "30+|min"]
     df = e.loc[terms].assign(x=labels, color=p["blue"])
     return effect_bars(df, labels)
-
-
-def band_chart(speed, band):
-    """The loss effect for every rating band; the selected band is highlighted, the rest are context."""
-    p = palette()
-    g = with_elo(load("effects_by_group.csv"))
-    df = g[(g.speed == speed) & (g.rating_band != "All") & (g.term == "prev_loss")].copy()
-    names = {v: k for k, v in BANDS.items()}
-    df["x"] = df.rating_band.map(names)
-    df["color"] = np.where((band == "All") | (df.rating_band == band), p["blue"], p["gray"])
-    return effect_bars(df, [k for k in BANDS if k != "All"])
 
 
 def requeue_chart(speed):
@@ -176,9 +202,11 @@ def requeue_chart(speed):
         tooltip=[alt.Tooltip("Time control:N"), alt.Tooltip("x:N", title="Losses in a row"),
                  alt.Tooltip("pct_text:N", title="Requeued within 1 min"), alt.Tooltip("n_text:N", title="Games")])
     lines = base.mark_line(strokeWidth=2.5)
-    points = base.mark_point(filled=True, size=90, opacity=1, stroke=p["surface"], strokeWidth=2)
-    end = base.transform_filter("datum.x == '5+'").mark_text(align="left", dx=12, fontSize=14, fontWeight=600).encode(
-        text="pct_text:N", color=alt.value(p["ink"]))  # values in ink; the line carries the colour
+    points = base.mark_point(filled=True, size=90, opacity=1)
+    # End labels come from a chart without the colour encoding, so they use the theme's text colour
+    end = alt.Chart(s).transform_filter("datum.x == '5+'").mark_text(
+        align="left", dx=12, fontSize=14, fontWeight=600).encode(
+        x=alt.X("x:N", sort=list(names.values())), y="pct:Q", text="pct_text:N").properties(name="vlabel_end")
     return alt.layer(lines, points, end)
 
 
@@ -203,7 +231,7 @@ def raw_vs_expected_chart(speed, band):
     ring = base.transform_filter("datum.kind != 'Actual score'").mark_point(size=420, strokeWidth=3, filled=False).encode(
         color=alt.Color("kind:N", scale=kinds))
     dot = base.transform_filter("datum.kind == 'Actual score'").mark_point(
-        size=120, filled=True, opacity=1, stroke=p["surface"], strokeWidth=1.5).encode(color=alt.Color("kind:N", scale=kinds))
+        size=120, filled=True, opacity=1).encode(color=alt.Color("kind:N", scale=kinds))
     return alt.layer(ring, dot)
 
 
@@ -221,11 +249,12 @@ def sign_flip_chart():
         color=color)
     line = base.mark_line(strokeWidth=2.5).encode(y=alt.Y("elo:Q", title="Elo points"))
     band = base.mark_area(opacity=0.18).encode(y="elo_low:Q", y2="elo_high:Q")
-    pts = base.mark_point(filled=True, size=80, opacity=1, stroke=p["surface"], strokeWidth=2).encode(
+    pts = base.mark_point(filled=True, size=80, opacity=1).encode(
         y="elo:Q", tooltip=[alt.Tooltip("Model:N"), alt.Tooltip("x:N", title="Losses in a row"),
                             alt.Tooltip("value_label:N", title="Effect (Elo)"), alt.Tooltip("ci_text:N", title="95% CI")])
-    end = base.transform_filter("datum.x == '5+'").mark_text(align="left", dx=12, fontSize=14, fontWeight=600).encode(
-        y="elo:Q", text="value_label:N", color=alt.value(p["ink"]))
+    end = alt.Chart(m).transform_filter("datum.x == '5+'").mark_text(
+        align="left", dx=12, fontSize=14, fontWeight=600).encode(
+        x=alt.X("x:N", sort=["1", "2", "3", "4", "5+"]), y="elo:Q", text="value_label:N").properties(name="vlabel_end")
     zero = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color=p["baseline"], strokeWidth=1.2).encode(y="y:Q")
     return alt.layer(line, band, zero, pts, end)  # line first, so the legend shows solid line swatches
 
@@ -260,16 +289,37 @@ def verdict(e, speed_label, band_label):
     return f"{s1} {s2} {s3}"
 
 
-def tile(column, label, row, what):
-    """A stat tile: the estimate in Elo, with its 95% CI (or 'not significant') as a quiet note."""
-    note = "not significant" if row.pvalue >= 0.05 else f"95% CI {fmt_elo(row.elo_low)} to {fmt_elo(row.elo_high)}"
-    column.metric(label, f"{fmt_elo(row.elo)} Elo", delta=note, delta_color="off", delta_arrow="off",
-                  border=True, help=tile_help(row, what))
+def band_for(rating):
+    """The rating-band label (as in BANDS) that a rating number falls into."""
+    if rating < 1200:
+        return "Under 1200"
+    if rating < 1600:
+        return "1200–1600"
+    if rating < 2000:
+        return "1600–2000"
+    return "2000+"
 
 
-def tile_help(row, what):
-    return (f"{what}. 95% CI {row.ci_text} Elo, p {row.p_text}, {row.n_text} player-games. "
-            "Compared with the same player after a win.")
+def calculator_answer(e, rating, term, streak_label, people):
+    """HTML for the calculator: the rating you'd play like, the change, and what it's based on."""
+    row, brk = e.loc[term], e.loc["loss_x_gap_30plus"]
+    plays_like = rating + round(row.elo)
+    if row.pvalue < 0.05:
+        change = f"That’s {abs(round(row.elo))} points {'below' if row.elo < 0 else 'above'} your usual {rating:,}."
+    else:
+        change = f"Not clearly different from your usual {rating:,}: the estimate isn’t statistically significant."
+    after_break = ("After a loss and a 30-minute break, players like you are back to their usual level."
+                   if brk.pvalue >= 0.05 else
+                   f"After a loss and a 30-minute break, players like you still play about {abs(round(brk.elo))} points "
+                   f"{'below' if brk.elo < 0 else 'above'} their usual level.")
+    losses = "a loss" if streak_label == "1" else f"{streak_label} losses in a row"
+    return f"""
+<p class="calc-label">After {losses}, in your next game you play like a</p>
+<p class="calc-number">{plays_like:,}</p>
+<p class="calc-change">{change}</p>
+<p class="calc-quiet">{after_break}</p>
+<p class="calc-quiet">Estimated from {row.n_text} player-games by {people}; 95% CI {row.ci_text} Elo.</p>
+"""
 
 
 # ---------------------------------------------------------------- page
@@ -277,58 +327,61 @@ def tile_help(row, what):
 st.markdown("""
 <style>
   .block-container { max-width: 1180px; padding-top: 2.5rem; }
-  .byline { color: var(--st-gray-text-color, #6b6a66); font-size: 0.95rem; margin-bottom: 0.2rem; }
-  .verdict { font-size: 1.6rem; line-height: 1.4; max-width: 46rem; margin: 0.6rem 0 1.8rem 0; font-weight: 450; }
+  .stMarkdown .byline { opacity: 0.65; font-size: 0.95rem; margin-bottom: 0.2rem; }
+  .stMarkdown .verdict { font-size: 1.45rem; line-height: 1.45; max-width: 46rem; margin: 0.4rem 0 1.6rem 0; font-weight: 450; }
+  .stMarkdown .calc-label { font-size: 1.05rem; opacity: 0.75; margin: 0; }
+  .stMarkdown .calc-number { font-size: clamp(3.6rem, 7vw, 5.6rem); font-weight: 700; line-height: 1.02;
+                 letter-spacing: -0.03em; margin: 0.15rem 0 0.5rem 0; }
+  .stMarkdown .calc-change { font-size: 1.15rem; font-weight: 500; margin: 0 0 0.6rem 0; }
+  .stMarkdown .calc-quiet { font-size: 0.93rem; opacity: 0.7; margin: 0 0 0.3rem 0; max-width: 34rem; }
+  .stMarkdown .note { opacity: 0.7; font-size: 0.9rem; max-width: 48rem; }
+  /* chart value labels (marks named vlabel_*) use the page's text colour, so they suit light and dark themes */
+  .stVegaLiteChart g[class*="vlabel"] text { fill: currentColor !important; }
   @media (max-width: 640px) {
-    .verdict { font-size: 1.25rem; }
+    .stMarkdown .verdict { font-size: 1.2rem; }
     h1 { font-size: 2.1rem !important; }
-    /* let the filter buttons wrap onto a second line instead of scrolling sideways */
+    /* let the option buttons wrap onto a second line instead of scrolling sideways */
     [data-testid="stButtonGroup"] > div { flex-wrap: wrap; }
   }
-  .note { color: var(--st-gray-text-color, #6b6a66); font-size: 0.9rem; max-width: 48rem; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown(f'<div class="byline">A data project by {AUTHOR}</div>', unsafe_allow_html=True)
 st.title("Do chess players play worse after losing?")
+st.markdown(f'<p class="verdict">{verdict(effects("All", "All"), "All", "All")}</p>', unsafe_allow_html=True)
 
-f1, f2 = st.columns([1, 2])
-speed_label = f1.segmented_control("Time control", list(SPEEDS), default="All", key="speed") or "All"
-band_label = f2.segmented_control("Player rating", list(BANDS), default="All", key="band") or "All"
-speed, band = SPEEDS[speed_label], BANDS[band_label]
-e = effects(speed, band)
+# The calculator: the visitor's rating picks the rating band used everywhere below.
+with st.container(border=True):
+    st.markdown("#### Try it with your own rating")
+    i1, i2, i3 = st.columns([1, 1.15, 1.5])
+    rating = int(i1.number_input("Your rating", min_value=600, max_value=3200, value=1500, step=50, key="rating"))
+    speed_label = i2.segmented_control("Time control", list(SPEEDS), default="All", key="speed") or "All"
+    streak_label = i3.segmented_control("Losses in a row", STREAK_LABELS, default="3", key="streak") or "3"
 
-st.markdown(f'<p class="verdict">{verdict(e, speed_label, band_label)}</p>', unsafe_allow_html=True)
+    band_label = band_for(rating)
+    speed, band = SPEEDS[speed_label], BANDS[band_label]
+    e = effects(speed, band)
+    term = STREAK_TERMS[STREAK_LABELS.index(streak_label)]
 
-t1, t2, t3, t4 = st.columns(4)
-loss, five, brk, n = e.loc["prev_loss"], e.loc["streak_5plus"], e.loc["loss_x_gap_30plus"], e.loc["prev_loss"].n_obs
-tile(t1, "After a loss", loss, "Next game in the same session, after any loss")
-tile(t2, "After 5+ losses", five, "Next game after five or more losses in a row, same session")
-tile(t3, "After a break", brk, "First game after a loss followed by a break of 30+ minutes")
-t4.metric("Games analyzed", f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.0f}K", border=True,
-          delta=f"{e.loc['prev_loss'].n_players:,.0f} players", delta_color="off", delta_arrow="off",
-          help=f"{n:,.0f} player-games: games played within a session, Lichess blitz and rapid, April 2017. "
-               "Each game counts once per player.")
+    r1, r2 = st.columns([1, 1.2], gap="large", vertical_alignment="center")
+    r1.markdown(calculator_answer(e, rating, term, streak_label, who(speed_label, band_label)), unsafe_allow_html=True)
+    with r2:
+        st.altair_chart(finish(staircase_chart(e, term), 260), width="stretch")
+        st.caption("Elo points vs. their usual level, by losses in a row. Your choice is in blue.")
 
-tab_effect, tab_behaviour, tab_method, tab_data = st.tabs(
-    ["The effect", "How players react", "How it was measured", "Data"])
+tab_map, tab_behaviour, tab_method, tab_data = st.tabs(
+    ["The tilt map", "How players react", "How it was measured", "Data"])
 
-with tab_effect:
-    c1, c2 = st.columns(2, gap="large")
-    with c1:
-        st.subheader("Does each loss in a row cost more?")
-        st.caption("Strength in the next game vs. the same player’s usual level, by losses in a row "
-                   "(gray: a loss followed by a 30+ minute break). Hover for details.")
-        st.altair_chart(finish(streak_chart(e), 330), width="stretch", theme=None)
-    with c2:
-        st.subheader("Does a break help?")
-        st.caption("The loss effect by how long the player waited before the next game. "
-                   "30+ minutes starts a new session.")
-        st.altair_chart(finish(cooldown_chart(e), 330), width="stretch", theme=None)
-    st.subheader("Who is hit hardest?")
-    st.caption(f"The effect of a loss for each rating band ({speed_label.lower() if speed_label != 'All' else 'all time controls'}). "
-               "Your selected band is highlighted.")
-    st.altair_chart(finish(band_chart(speed, band), 300), width="stretch", theme=None)
+with tab_map:
+    speed_text = "all time controls" if speed_label == "All" else speed_label.lower()
+    st.subheader("Who tilts, and how much")
+    st.caption(f"Strength in the next game vs. the player’s usual level, in Elo points ({speed_text}). "
+               f"Redder means a bigger drop. Your rating band is outlined. Hover any square for details.")
+    st.altair_chart(finish(tilt_map(speed, band), 330), width="stretch")
+    st.subheader("Does a break help?")
+    st.caption(f"The effect of a loss for {who(speed_label, band_label)}, by how long they waited before the "
+               "next game. 30+ minutes starts a new session.")
+    st.altair_chart(finish(cooldown_chart(e), 300), width="stretch")
     st.markdown('<p class="note">Elo points: how much weaker a player would need to be to score that much less '
                 'in an even match. Bars show estimates with 95% confidence intervals; n.s. means not statistically '
                 'significant.</p>', unsafe_allow_html=True)
@@ -342,9 +395,9 @@ with tab_behaviour:
              f"to play again within 30 minutes, but **{fast_pp:.1f} points more likely** to start a new game within a "
              "minute. Some players walk away; the ones who stay tend to rush back in, which is exactly when they "
              "play worst.")
-    st.altair_chart(finish(requeue_chart(speed), 330), width="stretch", theme=None)
+    st.altair_chart(finish(requeue_chart(speed), 330), width="stretch")
     st.caption("Raw rates for lobby games (not tournaments), last day of the month excluded. "
-               "The rating filter doesn’t apply to this chart.")
+               "This chart covers all ratings.")
     st.subheader("Why raw win rates are misleading")
     d = load("descriptive_prev_result.csv")
     d = d[(d.speed == speed) & (d.rating_band == band)].set_index("prev_result")
@@ -354,7 +407,7 @@ with tab_behaviour:
              f"But **{exp_gap / raw_gap:.0%}** of that is predicted by the ratings alone, mostly because they then face "
              "tougher opponents (rematches, for example). That’s why this project compares results with the rating "
              "prediction rather than raw win rate.")
-    st.altair_chart(finish(raw_vs_expected_chart(speed, band), 150), width="stretch", theme=None)
+    st.altair_chart(finish(raw_vs_expected_chart(speed, band), 150), width="stretch")
 
 with tab_method:
     st.subheader("How it was measured")
@@ -377,7 +430,7 @@ with tab_method:
    the next game, to see whether it fades.
 """)
     st.markdown("##### Why the naive model says losing makes you play better")
-    st.altair_chart(finish(sign_flip_chart(), 280), width="stretch", theme=None)
+    st.altair_chart(finish(sign_flip_chart(), 280), width="stretch")
 
     st.markdown("##### Does it hold up?")
     r = with_elo(load("robustness.csv"))
@@ -421,7 +474,7 @@ with tab_method:
             st.markdown(DECISIONS.read_text(encoding="utf-8"))
 
 with tab_data:
-    st.subheader(f"Estimates for this view")
+    st.subheader(f"Estimates for {who(speed_label, band_label)}")
     labels = {"prev_loss": "After a loss", "streak_1": "1 loss in a row", "streak_2": "2 in a row",
               "streak_3": "3 in a row", "streak_4": "4 in a row", "streak_5plus": "5+ in a row",
               "loss_x_gap_lt1": "Loss, next game < 1 min", "loss_x_gap_1_5": "Loss, next game 1–5 min",
