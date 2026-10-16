@@ -77,7 +77,8 @@ def palette():
 
 def finish(chart, height=300):
     """Shared chart layout: theme font, quiet axes. Colours of text and gridlines are left to the theme."""
-    return (chart.properties(height=height)
+    # extra left padding: axis labels are measured before the web font loads, then drawn slightly wider
+    return (chart.properties(height=height, padding={"left": 12, "right": 6, "top": 6, "bottom": 6})
             .configure(font=FONT)
             .configure_view(stroke=None)
             .configure_axis(domain=False, ticks=False, labelFontSize=13, titleFontSize=12, titleFontWeight=500,
@@ -151,27 +152,34 @@ def tilt_map(speed, band):
     df["col"], df["row"] = df.term.map(cols), df.rating_band.map(rows)
     df["group"] = df.row + ", " + df.col.str.replace("|", " ", regex=False) + (
         np.where(df.term == "loss_x_gap_30plus", "", " in a row"))
-    df["cell_label"] = df.value_label.str.replace(" (n.s.)", "\nn.s.", regex=False)
+    df["cell_value"] = df.elo.map(fmt_elo)
+    df["significant"] = df.pvalue < 0.05
     df["selected"] = df.rating_band == band
     limit = max(10, df.elo.abs().max())
-    # strong cells get light text, pale cells dark text, so every label stays readable
+
     base = alt.Chart(df).encode(
         x=alt.X("col:N", sort=list(cols.values()), title="Losses in a row before the game",
                 scale=alt.Scale(paddingInner=0.07),  # the gaps between squares show the page background
-                axis=alt.Axis(orient="top", labelAngle=0, labelExpr="split(datum.label, '|')", titlePadding=10)),
+                axis=alt.Axis(labelAngle=0, labelExpr="split(datum.label, '|')", labelPadding=8)),
         y=alt.Y("row:N", sort=list(rows.values()), title=None, scale=alt.Scale(paddingInner=0.07),
                 axis=alt.Axis(labelFontWeight=500)))
     cells = base.mark_rect(cornerRadius=6).encode(
-        color=alt.Color("elo:Q", title="Elo points", scale=alt.Scale(
-            domain=[-limit, 0, limit], range=[p["red"], p["mid"], p["blue"]], interpolate="lab"),
-            legend=alt.Legend(orient="bottom", direction="horizontal", gradientLength=220, format="+d")),
+        color=alt.Color("elo:Q", scale=alt.Scale(
+            domain=[-limit, 0, limit], range=[p["red"], p["mid"], p["blue"]], interpolate="lab"), legend=None),
         stroke=alt.condition("datum.selected", alt.value(p["heat_ink"]), alt.value("transparent")),
         strokeWidth=alt.condition("datum.selected", alt.value(3), alt.value(0)),
         tooltip=TOOLTIP)
-    text = base.mark_text(fontSize=15, fontWeight=600, lineBreak="\n", font=FONT).encode(
-        text="cell_label:N",
-        color=alt.condition(f"abs(datum.elo) > {0.45 * limit}", alt.value("#ffffff"), alt.value(p["heat_ink"])))
-    return alt.layer(cells, text)
+    # strong cells get light text, pale cells dark text, so every label stays readable
+    ink = alt.condition(f"abs(datum.elo) > {0.45 * limit}", alt.value("#ffffff"), alt.value(p["heat_ink"]))
+    value = dict(fontSize=15, fontWeight=600, font=FONT, baseline="middle")
+    sig = base.transform_filter("datum.significant").mark_text(**value).encode(text="cell_value:N", color=ink)
+    # not significant: the value moves up a little and a small "n.s." sits under it, both inside the square
+    ns_value = base.transform_filter("!datum.significant").mark_text(dy=-7, **value).encode(
+        text="cell_value:N", color=ink)
+    ns_tag = base.transform_filter("!datum.significant").mark_text(
+        dy=10, fontSize=11, fontWeight=500, font=FONT, baseline="middle", opacity=0.75).encode(
+        text=alt.value("n.s."), color=ink)
+    return alt.layer(cells, sig, ns_value, ns_tag)
 
 
 def cooldown_chart(e):
@@ -353,21 +361,23 @@ st.markdown(f'<p class="verdict">{verdict(effects("All", "All"), "All", "All")}<
 # The calculator: the visitor's rating picks the rating band used everywhere below.
 with st.container(border=True):
     st.markdown("#### Try it with your own rating")
-    i1, i2, i3 = st.columns([1, 1.15, 1.5])
-    rating = int(i1.number_input("Your rating", min_value=600, max_value=3200, value=1500, step=50, key="rating"))
-    speed_label = i2.segmented_control("Time control", list(SPEEDS), default="All", key="speed") or "All"
-    streak_label = i3.segmented_control("Losses in a row", STREAK_LABELS, default="3", key="streak") or "3"
+    # One two-column grid for the whole card, so the inputs line up with what they control:
+    # left = your rating and time control, then the answer; right = losses in a row, then the chart.
+    left, right = st.columns([1, 1.2], gap="large")
+    a, b = left.columns([1, 1.1])
+    rating = int(a.number_input("Your rating", min_value=600, max_value=3200, value=1500, step=50, key="rating"))
+    speed_label = b.segmented_control("Time control", list(SPEEDS), default="All", key="speed") or "All"
+    streak_label = right.segmented_control("Losses in a row", STREAK_LABELS, default="3", key="streak") or "3"
 
     band_label = band_for(rating)
     speed, band = SPEEDS[speed_label], BANDS[band_label]
     e = effects(speed, band)
     term = STREAK_TERMS[STREAK_LABELS.index(streak_label)]
 
-    r1, r2 = st.columns([1, 1.2], gap="large", vertical_alignment="center")
-    r1.markdown(calculator_answer(e, rating, term, streak_label, who(speed_label, band_label)), unsafe_allow_html=True)
-    with r2:
-        st.altair_chart(finish(staircase_chart(e, term), 260), width="stretch")
-        st.caption("Elo points vs. their usual level, by losses in a row. Your choice is in blue.")
+    left.markdown(calculator_answer(e, rating, term, streak_label, who(speed_label, band_label)),
+                  unsafe_allow_html=True)
+    right.altair_chart(finish(staircase_chart(e, term), 280), width="stretch")
+    right.caption("Elo points vs. their usual level, by losses in a row. Your choice is in blue.")
 
 tab_map, tab_behaviour, tab_method, tab_data = st.tabs(
     ["The tilt map", "How players react", "How it was measured", "Data"])
@@ -376,8 +386,9 @@ with tab_map:
     speed_text = "all time controls" if speed_label == "All" else speed_label.lower()
     st.subheader("Who tilts, and how much")
     st.caption(f"Strength in the next game vs. the player’s usual level, in Elo points ({speed_text}). "
-               f"Redder means a bigger drop. Your rating band is outlined. Hover any square for details.")
-    st.altair_chart(finish(tilt_map(speed, band), 330), width="stretch")
+               f"Redder means a bigger drop; n.s. means not statistically significant. Your rating band is "
+               f"outlined. Hover any square for details.")
+    st.altair_chart(finish(tilt_map(speed, band), 320), width="stretch")
     st.subheader("Does a break help?")
     st.caption(f"The effect of a loss for {who(speed_label, band_label)}, by how long they waited before the "
                "next game. 30+ minutes starts a new session.")
