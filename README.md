@@ -4,6 +4,8 @@
 
 I measured this on 11.3 million rated games from the [Lichess open database](https://database.lichess.org) (April 2017), comparing each player with themselves.
 
+**Interactive dashboard: [chess-tilt.streamlit.app](https://chess-tilt.streamlit.app).** Enter your own rating and see the effect at your level.
+
 ![Every loss in a row makes chess players play worse, and a 30-minute break resets it](figures/1_hero_losing_streaks.png)
 
 ## Key findings
@@ -22,7 +24,7 @@ I measured this on 11.3 million rated games from the [Lichess open database](htt
 3. **Weaker players are hit hardest.** After a loss: −16 Elo for players under 1200, −10 for 1200–1600, −7 for 1600–2000, and no significant drop for 2000+ (though even they lose 11 points after five straight losses). Rapid players are affected more than blitz players (−9.6 vs −4.6 Elo).
 4. **People rush back in at exactly the wrong moment.** Comparing each player with themselves, a loss makes them 5.6 percentage points *less* likely to keep playing, but 1.9 points *more* likely to start a new game within a minute. In blitz, 56% of games after five straight losses are followed by a new game within a minute, against 43% after a win.
 
-The interactive dashboard lets you enter your own rating and see the effect for your level (`streamlit run app/streamlit_app.py`, see [How to run](#how-to-run)).
+The [interactive dashboard](https://chess-tilt.streamlit.app) breaks all of this down by rating and time control.
 
 ## Why this needed care
 

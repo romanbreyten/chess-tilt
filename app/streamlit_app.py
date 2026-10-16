@@ -345,11 +345,11 @@ st.markdown("""
   .stMarkdown .note { opacity: 0.7; font-size: 0.9rem; max-width: 48rem; }
   /* chart value labels (marks named vlabel_*) use the page's text colour, so they suit light and dark themes */
   .stVegaLiteChart g[class*="vlabel"] text { fill: currentColor !important; }
+  /* if option buttons don't fit their column, wrap onto a second line instead of hiding some */
+  [data-testid="stButtonGroup"] > div { flex-wrap: wrap; }
   @media (max-width: 640px) {
     .stMarkdown .verdict { font-size: 1.2rem; }
     h1 { font-size: 2.1rem !important; }
-    /* let the option buttons wrap onto a second line instead of scrolling sideways */
-    [data-testid="stButtonGroup"] > div { flex-wrap: wrap; }
   }
 </style>
 """, unsafe_allow_html=True)
@@ -363,8 +363,8 @@ with st.container(border=True):
     st.markdown("#### Try it with your own rating")
     # One two-column grid for the whole card, so the inputs line up with what they control:
     # left = your rating and time control, then the answer; right = losses in a row, then the chart.
-    left, right = st.columns([1, 1.2], gap="large")
-    a, b = left.columns([1, 1.1])
+    left, right = st.columns([1.1, 1], gap="large")
+    a, b = left.columns([0.8, 1.2])  # the time-control buttons need more room than the number box
     rating = int(a.number_input("Your rating", min_value=600, max_value=3200, value=1500, step=50, key="rating"))
     speed_label = b.segmented_control("Time control", list(SPEEDS), default="All", key="speed") or "All"
     streak_label = right.segmented_control("Losses in a row", STREAK_LABELS, default="3", key="streak") or "3"

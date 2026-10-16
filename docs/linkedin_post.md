@@ -20,6 +20,7 @@ The most interesting part to work through: my first model said players do *bette
 
 Business takeaway: a platform could test a light "take a short break" nudge after three losses in a row, and A/B test whether it improves next-game performance and long-term retention.
 
+Try it with your own rating: chess-tilt.streamlit.app
 Code, full method and limitations: github.com/romanbreyten/chess-tilt
 
 #DataScience #Python #BehavioralEconomics #Chess
@@ -27,5 +28,5 @@ Code, full method and limitations: github.com/romanbreyten/chess-tilt
 ---
 
 **Notes before posting**
-- Add the dashboard link next to the GitHub link once it's deployed.
+- LinkedIn shows a preview card for the first link in a post; put the dashboard link first so the card points to the interactive page.
 - The data can't tell emotional tilt apart from simply having a bad day; if someone asks, that's in the README's limitations, and the "take a break" takeaway holds either way.
